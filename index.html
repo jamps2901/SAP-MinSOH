@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SAP Minimum SOH Predictor (Price-Sensitive)</title>
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #111;
+    color: #fff;
+    max-width: 700px;
+    margin: 40px auto;
+    padding: 20px;
+    border-radius: 10px;
+    background: #1b1b1b;
+}
+h1 {
+    color: #00ffc3;
+    text-align: center;
+}
+label {
+    display: block;
+    margin-top: 15px;
+    font-weight: bold;
+}
+input {
+    width: 100%;
+    padding: 10px;
+    margin-top: 5px;
+    border-radius: 5px;
+    border: none;
+    font-size: 16px;
+}
+button {
+    margin-top: 20px;
+    width: 100%;
+    padding: 12px;
+    font-weight: bold;
+    background-color: #00ffc3;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    color: #000;
+    font-size: 16px;
+}
+#result {
+    margin-top: 25px;
+    background: #2c2c2c;
+    padding: 20px;
+    border-radius: 5px;
+    font-size: 16px;
+    line-height: 1.6;
+}
+</style>
+</head>
+<body>
+<h1>📦 SAP Minimum SOH Predictor</h1>
+
+<label for="sales">Weekly Sales History (comma-separated):</label>
+<input type="text" id="sales" placeholder="e.g. 100,120,90,110">
+
+<label for="lead">Lead Time (in days):</label>
+<input type="number" id="lead" placeholder="e.g. 14">
+
+<label for="regular">Regular Price:</label>
+<input type="number" step="0.01" id="regular" placeholder="e.g. 3.99">
+
+<label for="promo">Promotional Price (next week):</label>
+<input type="number" step="0.01" id="promo" placeholder="e.g. 2.99">
+
+<button onclick="predictMinimumSOH()">Predict Minimum Stock</button>
+
+<div id="result"></div>
+
+<script>
+function standardDeviation(values) {
+    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+    const squareDiffs = values.map(v => Math.pow(v - avg, 2));
+    const avgSquareDiff = squareDiffs.reduce((a, b) => a + b, 0) / (values.length - 1);
+    return Math.sqrt(avgSquareDiff);
+}
+
+function predictMinimumSOH() {
+    const salesInput = document.getElementById("sales").value;
+    const leadDays = parseFloat(document.getElementById("lead").value);
+    const regularPrice = parseFloat(document.getElementById("regular").value);
+    const promoPrice = parseFloat(document.getElementById("promo").value);
+    const resultBox = document.getElementById("result");
+
+    try {
+    const sales = salesInput.split(',').map(Number).filter(n => !isNaN(n));
+    if (sales.length < 2 || isNaN(leadDays) || isNaN(regularPrice) || isNaN(promoPrice)) {
+        resultBox.innerHTML = "⚠️ Please fill in all fields with valid numbers.";
+        return;
+    }
+
+    // Average daily sales and std deviation
+    const avgWeeklySales = sales.reduce((a, b) => a + b, 0) / sales.length;
+    const avgDailySales = avgWeeklySales / 7;
+    const stdDevDaily = standardDeviation(sales) / 7;
+
+    // Basic reorder point and SOH
+    let reorderPoint = avgDailySales * leadDays;
+    let baseSOH = reorderPoint + stdDevDaily;
+
+    // Dynamic buffer based on price drop
+    let demandMultiplier = 1;
+    if (promoPrice < regularPrice) {
+        demandMultiplier += (regularPrice - promoPrice) / regularPrice;
+        demandMultiplier = Math.min(demandMultiplier, 1.5); // Cap at 50% increase
+    }
+
+    const adjustedSOH = Math.round(baseSOH * demandMultiplier);
+    const bufferPercent = ((demandMultiplier - 1) * 100).toFixed(1);
+
+    resultBox.innerHTML = `
+        <strong>📊 SAP Planning Info (Auto-Buffered):</strong><br><br>
+        📅 <strong>Avg Daily Sales:</strong> ${avgDailySales.toFixed(2)} units/day<br>
+        🔁 <strong>Lead Time:</strong> ${leadDays} days<br>
+        ⚠️ <strong>Safety Stock:</strong> ${stdDevDaily.toFixed(2)} units<br>
+        💰 <strong>Price Drop:</strong> ${regularPrice} → ${promoPrice}<br>
+        📈 <strong>Demand Multiplier:</strong> x${demandMultiplier.toFixed(2)} (+${bufferPercent}% buffer)<br><br>
+        ✅ <strong>Minimum SOH (SAP-ready):</strong><br>
+        <span style="font-size: 22px; color: #00ffc3;"><strong>${adjustedSOH} units</strong></span>
+    `;
+    } catch (error) {
+    resultBox.innerHTML = "⚠️ Something went wrong. Please check your inputs.";
+    }
+}
+</script>
+</body>
+</html>
